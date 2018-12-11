@@ -9,6 +9,7 @@ TOLERANCE = 5 # minutes
 
 inputfilepath = sys.argv[1]
 
+# Enabling VERBOSE mode will enable the print statements
 VERBOSE = None
 try:
     if sys.argv[2] == '-v' or sys.argv[2] == '--verbose':
@@ -25,9 +26,13 @@ outputfilepath = inputfilepath[:inputfilepath.find('.csv')] + '_out' + inputfile
 with open(inputfilepath, 'r', newline='') as csvfile, open(outputfilepath, 'w', newline='') as outputfile:
     # DictReader will use the first row to name the fields
     reader = csv.DictReader(csvfile)
+
+    # Start the output file
     fieldnames = ['HorseID', 'Date_Time', 'Distance']
     writer = csv.DictWriter(outputfile, fieldnames=fieldnames)
     writer.writeheader()
+
+    # Get the first datapoint
     previousRow = reader.__next__()
     distance = 0
     thisHorse = previousRow['HorseID']
