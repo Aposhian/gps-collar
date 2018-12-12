@@ -1,4 +1,6 @@
 csv/*
 excel/*
 
+*.zip
+
 .vscode

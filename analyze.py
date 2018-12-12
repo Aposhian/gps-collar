@@ -20,8 +20,9 @@ except:
     VERBOSE = False
     pass
 
-# Append "_out" to the end of the filename (but before the extension)
-outputfilepath = inputfilepath[:inputfilepath.find('.csv')] + '_out' + inputfilepath[inputfilepath.find('.csv'):]
+# Replace "/original" with "/output" and append "_out" to the end of the filename (but before the extension)
+
+outputfilepath = inputfilepath.replace('/original','/output').replace('.csv','_out.csv')
 
 with open(inputfilepath, 'r', newline='') as csvfile, open(outputfilepath, 'w', newline='') as outputfile:
     # DictReader will use the first row to name the fields
