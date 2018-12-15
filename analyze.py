@@ -5,6 +5,9 @@ from math import sqrt, pow
 INTERVAL = 30 # minutes
 TOLERANCE = 5 # minutes
 
+BLOCK_LENGTH = 6 # hours
+
+
 # This means there will be at least INTERVAL - TOLERANCE minutes between datapoints
 
 inputfilepath = sys.argv[1]
@@ -19,6 +22,19 @@ try:
 except:
     VERBOSE = False
     pass
+
+def calculateDistance(previousRow, row):
+    if VERBOSE:
+        print('Using ' + previousRow['Date_Time'] + ': ' + previousRow['Hour'] + ' hours ' + previousRow['Minute'] + ' minutes' \
+            + '\n\tand '+ row['Date_Time'] + ': ' + row['Hour'] + ' hours ' + row['Minute'] + ' minutes') #debug
+
+    return sqrt(pow( float(previousRow['X_UTM']) - float(row['X_UTM']), 2 ) + pow( float(previousRow['Y_UTM']) - float(row['Y_UTM']), 2))
+
+def isInSameInterval(previousRow, row):
+    if row['HorseID'] != previousRow['HorseID']:
+        return False
+    else:
+        if 
 
 # Replace "/original" with "/output" and append "_out" to the end of the filename (but before the extension)
 
@@ -45,6 +61,7 @@ with open(inputfilepath, 'r', newline='') as csvfile, open(outputfilepath, 'w', 
             # We got to the end!
             if VERBOSE:
                 print(thisDay + ': ' + str(distance)) #debug
+
             writer.writerow({'HorseID': thisHorse, 'Date_Time': thisDay, 'Distance': distance})
             break
         if row['HorseID'] != thisHorse or row['Date_Time'] != thisDay:
@@ -52,18 +69,18 @@ with open(inputfilepath, 'r', newline='') as csvfile, open(outputfilepath, 'w', 
             if VERBOSE:
                 print(thisDay + ': ' + str(distance) + ' meters\n') #debug
             writer.writerow({'HorseID': thisHorse, 'Date_Time': thisDay, 'Distance': distance})
+
+            lastDistance = calculateDistance(previousRow, row) / 2 # Split the distance between the days
+            distance += lastDistance
             # Now we will start a new set
-            distance = 0
+            distance = lastDistance
             thisHorse = row['HorseID']
             thisDay = row['Date_Time']
         else:
             # Only use this datapoint if it is in the desired interval
             if abs( int(row['Minute']) - int(previousRow['Minute']) ) > (INTERVAL - TOLERANCE):
-                if VERBOSE:
-                    print('Using ' + previousRow['Date_Time'] + ': ' + previousRow['Hour'] + ' hours ' + previousRow['Minute'] + ' minutes' \
-                        + '\n\tand '+ row['Date_Time'] + ': ' + row['Hour'] + ' hours ' + row['Minute'] + ' minutes') #debug
                 # Application of Pythagorean Theorem
-                distance += sqrt(pow( float(previousRow['X_UTM']) - float(row['X_UTM']), 2 ) + pow( float(previousRow['Y_UTM']) - float(row['Y_UTM']), 2))
+                distance += calculateDistance(previousRow, row)
             else:
                 # Keep the same previous row
                 continue
