@@ -2,18 +2,19 @@ import csv
 import sys
 from math import sqrt, pow
 
-INTERVAL = 30 # minutes
-TOLERANCE = 5 # minutes
+SAMPLE_FREQUENCY = 30 # minutes
+SAMPLE_FREQUENCY_TOLERANCE = 5 # minutes
 
-BLOCK_LENGTH = 6 # hours
+INTERVAL_LENGTH = 6 # hours
 
 
 # This means there will be at least INTERVAL - TOLERANCE minutes between datapoints
 
-inputfilepath = sys.argv[1]
+inputfilepath = 'csv/original/Horse004.csv' #sys.argv[1]
 
 # Enabling VERBOSE mode will enable the print statements
 VERBOSE = None
+"""
 try:
     if sys.argv[2] == '-v' or sys.argv[2] == '--verbose':
         VERBOSE = True
@@ -22,7 +23,7 @@ try:
 except:
     VERBOSE = False
     pass
-
+"""
 def calculateDistance(previousRow, row):
     if VERBOSE:
         print('Using ' + previousRow['Date_Time'] + ': ' + previousRow['Hour'] + ' hours ' + previousRow['Minute'] + ' minutes' \
@@ -30,14 +31,18 @@ def calculateDistance(previousRow, row):
 
     return sqrt(pow( float(previousRow['X_UTM']) - float(row['X_UTM']), 2 ) + pow( float(previousRow['Y_UTM']) - float(row['Y_UTM']), 2))
 
-def isInSameInterval(previousRow, row):
-    if row['HorseID'] != previousRow['HorseID']:
-        return False
-    else:
-        if 
+def calculateTimeStamp(row):
+    # Assuming timestamp is in minutes
+    return int(row['Hour'])*60 + int(row['Minute'])
+
+def getHour(timestamp):
+    # Assuming timestamp is in minutes
+    return timestamp / 60
+
+def isInInterval(startIntervalTime, row):
+    return (startIntervalTime + INTERVAL_LENGTH*60) >= calculateTimeStamp(row)
 
 # Replace "/original" with "/output" and append "_out" to the end of the filename (but before the extension)
-
 outputfilepath = inputfilepath.replace('/original','/output').replace('.csv','_out.csv')
 
 with open(inputfilepath, 'r', newline='') as csvfile, open(outputfilepath, 'w', newline='') as outputfile:
@@ -45,7 +50,7 @@ with open(inputfilepath, 'r', newline='') as csvfile, open(outputfilepath, 'w', 
     reader = csv.DictReader(csvfile)
 
     # Start the output file
-    fieldnames = ['HorseID', 'Date_Time', 'Distance']
+    fieldnames = ['HorseID', 'Date', 'StartHour', 'EndHour', 'Distance']
     writer = csv.DictWriter(outputfile, fieldnames=fieldnames)
     writer.writeheader()
 
@@ -54,34 +59,51 @@ with open(inputfilepath, 'r', newline='') as csvfile, open(outputfilepath, 'w', 
     distance = 0
     thisHorse = previousRow['HorseID']
     thisDay = previousRow['Date_Time']
+    startIntervalTime = calculateTimeStamp(previousRow)
+    previousTime = startIntervalTime
+
     while True:
         try:
-            row = reader.__next__()
+            currentRow = reader.__next__()
+            currentTime = calculateTimeStamp(currentRow) # This won't execute when it gets to the end of the file
         except StopIteration:
             # We got to the end!
             if VERBOSE:
-                print(thisDay + ': ' + str(distance)) #debug
+                print(thisDay + ': ' + str(distance) + ' meters\n') #debug
 
-            writer.writerow({'HorseID': thisHorse, 'Date_Time': thisDay, 'Distance': distance})
+            writer.writerow({'HorseID': thisHorse, 'Date': thisDay, 'StartHour': getHour(startIntervalTime), 'EndHour': getHour(previousTime), 'Distance': distance})
             break
-        if row['HorseID'] != thisHorse or row['Date_Time'] != thisDay:
+        
+        assert currentRow['HorseID'] == previousRow['HorseID'] # Here I am forcing there to be only one horse per file
+
+        if isInInterval(startIntervalTime, currentRow):
+            # Only use this datapoint if it is in the desired sampling frequency
+            if abs( int(currentRow['Minute']) - int(previousRow['Minute']) ) > (SAMPLE_FREQUENCY - SAMPLE_FREQUENCY_TOLERANCE):
+                # Application of Pythagorean Theorem
+                distance += calculateDistance(previousRow, currentRow)
+            else:
+                # Keep the same previous row (don't do the assignment at the end of the loop)
+                continue
+        else:
             # We are done calculating distance for the last set
+
+            # I will take the distance from the last point of interval one to the first point of interval two
+            # and add that distance to interval one
+            distance += calculateDistance(previousRow, currentRow)
+
+            writer.writerow({'HorseID': thisHorse, 'Date': thisDay, 'StartHour': getHour(startIntervalTime), 'EndHour': getHour(currentTime), 'Distance': distance})
+
             if VERBOSE:
                 print(thisDay + ': ' + str(distance) + ' meters\n') #debug
-            writer.writerow({'HorseID': thisHorse, 'Date_Time': thisDay, 'Distance': distance})
 
-            lastDistance = calculateDistance(previousRow, row) / 2 # Split the distance between the days
-            distance += lastDistance
-            # Now we will start a new set
-            distance = lastDistance
-            thisHorse = row['HorseID']
-            thisDay = row['Date_Time']
-        else:
-            # Only use this datapoint if it is in the desired interval
-            if abs( int(row['Minute']) - int(previousRow['Minute']) ) > (INTERVAL - TOLERANCE):
-                # Application of Pythagorean Theorem
-                distance += calculateDistance(previousRow, row)
-            else:
-                # Keep the same previous row
-                continue
-        previousRow = row
+            # Now we will start a new interval
+            distance = 0
+            startIntervalTime = calculateTimeStamp(currentRow)
+            # If we want to divide the distance between the intervals, use this code:
+                #lastDistance = calculateDistance(previousRow, row) / 2 # Split the distance between the days
+                #distance = lastdistance
+            thisHorse = currentRow['HorseID']
+            thisDay = currentRow['Date_Time']
+
+        previousRow = currentRow
+        previousTime = calculateTimeStamp(previousRow)
