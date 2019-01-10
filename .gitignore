@@ -4,3 +4,4 @@ excel/*
 *.zip
 
 .vscode
+__pycache__
