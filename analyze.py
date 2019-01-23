@@ -35,11 +35,10 @@ if sys.version_info[0] < 3:
 
 
 
-SAMPLE_FREQUENCY = 30 # minutes
-SAMPLE_FREQUENCY_TOLERANCE = 5 # minutes
+SAMPLE_FREQUENCY = 30*60 # seconds
+SAMPLE_FREQUENCY_TOLERANCE = 5*60 # seconds
 assert SAMPLE_FREQUENCY_TOLERANCE >= 0
 # This means there will be at least INTERVAL - TOLERANCE minutes between datapoints
-MINIMUM_DATAPOINTS_PER_INTERVAL = 2
 
 
 
@@ -62,7 +61,7 @@ except (IndexError, AssertionError):
 LENGTH_OF_DAY_IN_SECONDS = 24*3600 # 24 hours * 3600 seconds per hour
 INTERVAL_LENGTH_IN_SECONDS = int((24 / NUMBER_OF_INTERVALS)*3600)
 INTERVALS = list(range(0, LENGTH_OF_DAY_IN_SECONDS, INTERVAL_LENGTH_IN_SECONDS))
-
+MINIMUM_DATAPOINTS_PER_INTERVAL = INTERVAL_LENGTH_IN_SECONDS // (SAMPLE_FREQUENCY)
 
 
 # HELPER FUNCTIONS
@@ -139,18 +138,21 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
     currentInterval = isInWhatInterval(previousDatetime)
     numberOfDatapoints = 1 # We just counted the first one
 
+    # Store rows to write until all datapoints are confirmed
+    # (Sequence of Dictionaries)
+    rowsToWrite = []
+
     # Loop until all rows have been read
     while True:
         try:
             currentRow = reader.__next__()
-            numberOfDatapoints += 1
             currentDatetime = getDatetime(currentRow) # This won't execute when it gets to the end of the file
         except StopIteration:
             # We got to the end!
             logfile.write((previousDatetime.date()).isoformat() + ': ' + str(distance) + ' meters\n')
 
             # Write data for the last interval
-            writer.writerow({'HorseID': thisHorse, 'Date': (startDatetime.date()).isoformat(), 'Interval': isInWhatInterval(startDatetime),'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), 'EndTime': (previousDatetime.time()).isoformat(timespec='minutes'), 'Distance': distance})
+            rowsToWrite.append({'HorseID': thisHorse, 'Date': (startDatetime.date()).isoformat(), 'Interval': isInWhatInterval(startDatetime),'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), 'EndTime': (previousDatetime.time()).isoformat(timespec='minutes'), 'Distance': distance})
             break # Exit the loop
         
         assert currentRow['HorseID'] == previousRow['HorseID'] # Here I am forcing there to be only one horse per file
@@ -158,11 +160,12 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
         if (previousDatetime.date()).isoformat() == currentRow['Date_Time'] and isInSameInterval(startDatetime, currentDatetime):
             # assert currentDatetime.timestamp() > previousDatetime.timestamp()
             # Only use this datapoint if it is in the desired sampling frequency
-            if abs( int(currentRow['Minute']) - int(previousRow['Minute']) ) > (SAMPLE_FREQUENCY - SAMPLE_FREQUENCY_TOLERANCE):
+            if (currentDatetime - previousDatetime).total_seconds() > (SAMPLE_FREQUENCY - SAMPLE_FREQUENCY_TOLERANCE):
+                numberOfDatapoints += 1 # We are using this datapoint
                 # Application of Pythagorean Theorem
                 distance += calculateDistance(previousRow, currentRow)
 
-                logfile.write('Using ' + previousRow['Date_Time'] + ': ' + previousRow['Hour'] + ' hours ' + previousRow['Minute'] + ' minutes' \
+                logfile.write('Calculating distance for ' + previousRow['Date_Time'] + ': ' + previousRow['Hour'] + ' hours ' + previousRow['Minute'] + ' minutes' \
                     + '\n\tand '+ currentRow['Date_Time'] + ': ' + currentRow['Hour'] + ' hours ' + currentRow['Minute'] + ' minutes\n')
             else:
                 # Keep the same previous row (don't do the assignment at the end of the loop)
@@ -170,18 +173,31 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
         else:
             # We are done calculating distance for the last set
 
-            # OPTION: throw out data for intervals that don't have enough datapoints
+            # Throw out data for intervals that don't have enough datapoints
             if numberOfDatapoints >= MINIMUM_DATAPOINTS_PER_INTERVAL:
                 # I will take the distance from the last point of interval one to the first point of interval two
                 # and add that distance to interval one
-                # However, if it is delayed too much then I will not use this datapoint
-                distance += calculateDistance(previousRow, currentRow)
+                # If it is delayed too much then I will not use this datapoint
+                if (currentDatetime - previousDatetime).total_seconds() - SAMPLE_FREQUENCY_TOLERANCE <= SAMPLE_FREQUENCY:
+                    distance += calculateDistance(previousRow, currentRow)
+                    logfile.write('Adding distance between last datapoint and first datapoint\n')
+                else:
+                    logfile.write('Too large a gap to add distance to next interval\n')
 
-                writer.writerow({'HorseID': thisHorse, 'Date': (startDatetime.date()).isoformat(), 'Interval': isInWhatInterval(startDatetime), 'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), 'EndTime': (currentDatetime.time()).isoformat(timespec='minutes'), 'Distance': distance})
- 
+                rowsToWrite.append({'HorseID': thisHorse, 'Date': (startDatetime.date()).isoformat(), 'Interval': isInWhatInterval(startDatetime), 'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), 'EndTime': (currentDatetime.time()).isoformat(timespec='minutes'), 'Distance': distance})
+
                 logfile.write((previousDatetime.date()).isoformat() + ': ' + str(distance) + ' meters\n') #debug
             else:
-                logfile.write('Insufficient number of datapoints on ' + (startDatetime.date()).isoformat() + ' Interval ' + str(currentInterval))
+                logfile.write('Insufficient number of datapoints on ' + (startDatetime.date()).isoformat() + ' Interval ' + str(currentInterval) + '\n')            
+            # Only write datapoints for the day if all intervals are present
+            if (previousDatetime.date()).isoformat() != currentRow['Date_Time']:
+                if len(rowsToWrite) == NUMBER_OF_INTERVALS:
+                    for row in rowsToWrite:
+                        writer.writerow(row)
+                else:
+                    logfile.write('Insufficient number of intervals on ' + (previousDatetime.date()).isoformat() + '\n')
+                rowsToWrite = []
+            
             # Now we will start a new interval
             startDatetime = currentDatetime
             distance = 0
