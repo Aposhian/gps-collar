@@ -126,7 +126,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
     reader = csv.DictReader(inputCSVfile)
 
     # Start the output file
-    fieldnames = ['HorseID', 'Date', 'StartTime', 'EndTime', 'Distance']
+    fieldnames = ['HorseID', 'Date', 'Interval', 'StartTime', 'EndTime', 'Distance']
     writer = csv.DictWriter(outputCSVfile, fieldnames=fieldnames)
     writer.writeheader()
 
@@ -150,7 +150,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
             logfile.write((previousDatetime.date()).isoformat() + ': ' + str(distance) + ' meters\n')
 
             # Write data for the last interval
-            writer.writerow({'HorseID': thisHorse, 'Date': (startDatetime.date()).isoformat(), 'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), 'EndTime': (previousDatetime.time()).isoformat(timespec='minutes'), 'Distance': distance})
+            writer.writerow({'HorseID': thisHorse, 'Date': (startDatetime.date()).isoformat(), 'Interval': isInWhatInterval(startDatetime),'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), 'EndTime': (previousDatetime.time()).isoformat(timespec='minutes'), 'Distance': distance})
             break # Exit the loop
         
         assert currentRow['HorseID'] == previousRow['HorseID'] # Here I am forcing there to be only one horse per file
@@ -177,7 +177,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
                 # However, if it is delayed too much then I will not use this datapoint
                 distance += calculateDistance(previousRow, currentRow)
 
-                writer.writerow({'HorseID': thisHorse, 'Date': (startDatetime.date()).isoformat(), 'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), 'EndTime': (currentDatetime.time()).isoformat(timespec='minutes'), 'Distance': distance})
+                writer.writerow({'HorseID': thisHorse, 'Date': (startDatetime.date()).isoformat(), 'Interval': isInWhatInterval(startDatetime), 'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), 'EndTime': (currentDatetime.time()).isoformat(timespec='minutes'), 'Distance': distance})
  
                 logfile.write((previousDatetime.date()).isoformat() + ': ' + str(distance) + ' meters\n') #debug
             else:
