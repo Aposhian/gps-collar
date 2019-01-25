@@ -61,7 +61,7 @@ except (IndexError, AssertionError):
 LENGTH_OF_DAY_IN_SECONDS = 24*3600 # 24 hours * 3600 seconds per hour
 INTERVAL_LENGTH_IN_SECONDS = int((24 / NUMBER_OF_INTERVALS)*3600)
 INTERVALS = list(range(0, LENGTH_OF_DAY_IN_SECONDS, INTERVAL_LENGTH_IN_SECONDS))
-MINIMUM_DATAPOINTS_PER_INTERVAL = INTERVAL_LENGTH_IN_SECONDS // (SAMPLE_FREQUENCY)
+MINIMUM_DATAPOINTS_PER_INTERVAL = 2 #( INTERVAL_LENGTH_IN_SECONDS // (SAMPLE_FREQUENCY) ) // 2 # It will be accepted if it has at least half the datapoints
 
 
 # HELPER FUNCTIONS
@@ -178,7 +178,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
                 # I will take the distance from the last point of interval one to the first point of interval two
                 # and add that distance to interval one
                 # If it is delayed too much then I will not use this datapoint
-                if (currentDatetime - previousDatetime).total_seconds() - SAMPLE_FREQUENCY_TOLERANCE <= SAMPLE_FREQUENCY:
+                if (currentDatetime - previousDatetime).total_seconds() <= INTERVAL_LENGTH_IN_SECONDS:
                     distance += calculateDistance(previousRow, currentRow)
                     logfile.write('Adding distance between last datapoint and first datapoint\n')
                 else:
@@ -191,7 +191,8 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
                 logfile.write('Insufficient number of datapoints on ' + (startDatetime.date()).isoformat() + ' Interval ' + str(currentInterval) + '\n')            
             # Only write datapoints for the day if all intervals are present
             if (previousDatetime.date()).isoformat() != currentRow['Date_Time']:
-                if len(rowsToWrite) == NUMBER_OF_INTERVALS:
+                # Reject a day if it is missing more than one interval
+                if len(rowsToWrite) >= NUMBER_OF_INTERVALS - 1:
                     for row in rowsToWrite:
                         writer.writerow(row)
                 else:
