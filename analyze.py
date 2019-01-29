@@ -60,8 +60,8 @@ except (IndexError, AssertionError):
 # Calculate the interval boundaries (in minutes)
 LENGTH_OF_DAY_IN_SECONDS = 24*3600 # 24 hours * 3600 seconds per hour
 INTERVAL_LENGTH_IN_SECONDS = int((24 / NUMBER_OF_INTERVALS)*3600)
-INTERVALS = list(range(0, LENGTH_OF_DAY_IN_SECONDS, INTERVAL_LENGTH_IN_SECONDS))
-MINIMUM_DATAPOINTS_PER_INTERVAL = 2 #( INTERVAL_LENGTH_IN_SECONDS // (SAMPLE_FREQUENCY) ) // 2 # It will be accepted if it has at least half the datapoints
+INTERVALS = list(range(0, LENGTH_OF_DAY_IN_SECONDS, INTERVAL_LENGTH_IN_SECONDS)) # Timestamps of interval starts
+MINIMUM_DATAPOINTS_PER_INTERVAL = 1 #( INTERVAL_LENGTH_IN_SECONDS // (SAMPLE_FREQUENCY) ) // 2 # It will be accepted if it has at least half the datapoints
 
 
 # HELPER FUNCTIONS
@@ -109,7 +109,8 @@ def isInWhatInterval(datetime):
     """
     return ( (datetime.hour * 3600) + (datetime.minute * 60) + datetime.second ) // INTERVAL_LENGTH_IN_SECONDS
 
-
+def getIntervalStart(middleDatetime):
+    return datetime.datetime.fromtimestamp(convertDateToUnixTimestamp((middleDatetime.date()).isoformat()) + INTERVALS[isInWhatInterval(middleDatetime)])
 
 # MAIN SCRIPT
 
@@ -174,25 +175,33 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
             # We are done calculating distance for the last set
 
             # Throw out data for intervals that don't have enough datapoints
-            if numberOfDatapoints >= MINIMUM_DATAPOINTS_PER_INTERVAL:
-                # I will take the distance from the last point of interval one to the first point of interval two
-                # and add that distance to interval one
-                # If it is delayed too much then I will not use this datapoint
-                if (currentDatetime - previousDatetime).total_seconds() <= INTERVAL_LENGTH_IN_SECONDS:
-                    distance += calculateDistance(previousRow, currentRow)
-                    logfile.write('Adding distance between last datapoint and first datapoint\n')
-                else:
-                    logfile.write('Too large a gap to add distance to next interval\n')
-
-                rowsToWrite.append({'HorseID': thisHorse, 'Date': (startDatetime.date()).isoformat(), 'Interval': isInWhatInterval(startDatetime), 'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), 'EndTime': (currentDatetime.time()).isoformat(timespec='minutes'), 'Distance': distance})
-
-                logfile.write((previousDatetime.date()).isoformat() + ': ' + str(distance) + ' meters\n') #debug
+            #if numberOfDatapoints >= MINIMUM_DATAPOINTS_PER_INTERVAL:
+            # I will take the distance from the last point of interval one to the first point of interval two
+            # and add that distance to interval one
+            # Restrict the merging to be between two intervals
+            proportion_to_first_interval = 0
+            proportion_to_second_interval = 0
+            total_distance = calculateDistance(previousRow, currentRow)
+            if (getIntervalStart(currentDatetime) - previousDatetime).total_seconds() <= INTERVAL_LENGTH_IN_SECONDS:
+                logfile.write('boundary: ' + str(getIntervalStart(currentDatetime).timestamp()) + '\n')
+                logfile.write('currentDatetime: ' + str(currentDatetime.timestamp()) + '\n')
+                logfile.write('previousDatetime: ' + str(previousDatetime.timestamp()) + '\n')
+                proportion_to_first_interval = (getIntervalStart(currentDatetime) - previousDatetime) / (currentDatetime - previousDatetime)
+                proportion_to_second_interval = (currentDatetime - getIntervalStart(currentDatetime)) / (currentDatetime - previousDatetime)
+                distance += proportion_to_first_interval*total_distance
+                logfile.write('Adding ' + str(proportion_to_first_interval) +' to first interval and ' + str(proportion_to_second_interval) + ' to second interval\n')
             else:
-                logfile.write('Insufficient number of datapoints on ' + (startDatetime.date()).isoformat() + ' Interval ' + str(currentInterval) + '\n')            
+                logfile.write('Too large a gap to add distance to next interval\n')
+
+            rowsToWrite.append({'HorseID': thisHorse, 'Date': (startDatetime.date()).isoformat(), 'Interval': isInWhatInterval(startDatetime), 'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), 'EndTime': (currentDatetime.time()).isoformat(timespec='minutes'), 'Distance': distance})
+
+            logfile.write((previousDatetime.date()).isoformat() + ': ' + str(distance) + ' meters\n') #debug
+            #else:
+            #   logfile.write('Insufficient number of datapoints on ' + (startDatetime.date()).isoformat() + ' Interval ' + str(currentInterval) + '\n')            
             # Only write datapoints for the day if all intervals are present
             if (previousDatetime.date()).isoformat() != currentRow['Date_Time']:
-                # Reject a day if it is missing more than one interval
-                if len(rowsToWrite) >= NUMBER_OF_INTERVALS - 1:
+                # Reject a day if it does not have all intervals represented
+                if len(rowsToWrite) == NUMBER_OF_INTERVALS:
                     for row in rowsToWrite:
                         writer.writerow(row)
                 else:
@@ -201,7 +210,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
             
             # Now we will start a new interval
             startDatetime = currentDatetime
-            distance = 0
+            distance = proportion_to_second_interval*total_distance
             numberOfDatapoints = 1
             currentInterval = isInWhatInterval(currentDatetime)
             # If we want to divide the distance between the intervals, use this code:
