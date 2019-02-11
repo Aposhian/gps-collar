@@ -4,7 +4,7 @@
 # exit on non-zero exit code from test case
 python3 analyze.py test/test.csv 6
 
-cmp test/expected.csv test/expected.csv -s
+cmp test/test.csv test/expected.csv -s
 
 if test $? -ne 0
 then

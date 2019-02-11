@@ -128,7 +128,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
     reader = csv.DictReader(inputCSVfile)
 
     # Start the output file
-    fieldnames = ['HorseID', 'Date', 'Interval', 'StartTime', 'EndTime', 'Distance', 'Spay']
+    fieldnames = ['HorseID', 'Date', 'Interval', 'StartTime', 'EndTime', 'Distance', 'Area','Spay']
     writer = csv.DictWriter(outputCSVfile, fieldnames=fieldnames)
     writer.writeheader()
 
@@ -160,6 +160,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
                     'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), \
                     'EndTime': (previousDatetime.time()).isoformat(timespec='minutes'), \
                     'Distance': (LineString(intervalPoints)).length, \
+                    'Area': ((MultiPoint(intervalPoints)).convex_hull).area, \
                     'Spay': SPAY})
             else:
                 logfile.write('Insufficient number of datapoints on ' + (startDatetime.date()).isoformat() + ' Interval ' + str(isInWhatInterval(startDatetime)) + '\n')            
@@ -210,6 +211,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
                     'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), \
                     'EndTime': (currentDatetime.time()).isoformat(timespec='minutes'), \
                     'Distance': (LineString(intervalPoints)).length, \
+                    'Area': ((MultiPoint(intervalPoints)).convex_hull).area, \
                     'Spay': SPAY})
 
                 logfile.write((previousDatetime.date()).isoformat() + ': ' + str((LineString(intervalPoints)).length) + ' meters\n') #debug
