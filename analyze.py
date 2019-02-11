@@ -111,7 +111,12 @@ def getPoint(row):
 
 # MAIN SCRIPT
 
-
+if inputfilepath.find('AS') != -1:
+    SPAY = 'A'
+elif inputfilepath.find('BS') != -1:
+    SPAY = 'B'
+else:
+    SPAY = 'N'
 
 # Replace "/original" with "/output" and append "_out" to the end of the filename (but before the extension)
 outputfilepath = inputfilepath.replace('/original','/output').replace('.csv','_out.csv')
@@ -123,7 +128,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
     reader = csv.DictReader(inputCSVfile)
 
     # Start the output file
-    fieldnames = ['HorseID', 'Date', 'Interval', 'StartTime', 'EndTime', 'Distance']
+    fieldnames = ['HorseID', 'Date', 'Interval', 'StartTime', 'EndTime', 'Distance', 'Spay']
     writer = csv.DictWriter(outputCSVfile, fieldnames=fieldnames)
     writer.writeheader()
 
@@ -154,7 +159,8 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
                     'Interval': isInWhatInterval(startDatetime), \
                     'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), \
                     'EndTime': (previousDatetime.time()).isoformat(timespec='minutes'), \
-                    'Distance': (LineString(intervalPoints)).length})
+                    'Distance': (LineString(intervalPoints)).length, \
+                    'Spay': SPAY})
             else:
                 logfile.write('Insufficient number of datapoints on ' + (startDatetime.date()).isoformat() + ' Interval ' + str(isInWhatInterval(startDatetime)) + '\n')            
             break # Exit the loop
@@ -203,7 +209,8 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
                     'Interval': isInWhatInterval(startDatetime), \
                     'StartTime': (startDatetime.time()).isoformat(timespec='minutes'), \
                     'EndTime': (currentDatetime.time()).isoformat(timespec='minutes'), \
-                    'Distance': (LineString(intervalPoints)).length})
+                    'Distance': (LineString(intervalPoints)).length, \
+                    'Spay': SPAY})
 
                 logfile.write((previousDatetime.date()).isoformat() + ': ' + str((LineString(intervalPoints)).length) + ' meters\n') #debug
             else:
