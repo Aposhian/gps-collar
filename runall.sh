@@ -17,9 +17,13 @@ else
 fi
 
 # Main code
+
+# Specify how many intervals to split each day into
+NUMBER_OF_INTERVALS=6 # Default to 6 intervals
+
 for filename in ../PWS/csv/original/*.csv; do
 	echo "Calculating data for $filename"
-	python3 analyze.py "$filename" 6 -v
+	python3 analyze.py "$filename" $NUMBER_OF_INTERVALS
 done
 echo "Zipping output csv files together"
 zip ../PWS/outputs.zip ../PWS/csv/output/*_out.csv -q
