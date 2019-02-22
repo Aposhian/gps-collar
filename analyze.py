@@ -20,7 +20,7 @@ import time
 import datetime
 from math import sqrt, pow
 from shapely.geometry import Polygon, Point, MultiPoint, LineString
-
+#from matplotlib import pyplot
 
 
 # CHECK PYTHON VERSION
@@ -60,33 +60,19 @@ except (IndexError, AssertionError):
 
 # Calculate the interval boundaries (in minutes)
 LENGTH_OF_DAY_IN_SECONDS = 24*3600 # 24 hours * 3600 seconds per hour
-INTERVAL_LENGTH_IN_SECONDS = int((24 / NUMBER_OF_INTERVALS)*3600)
-INTERVALS = list(range(0, LENGTH_OF_DAY_IN_SECONDS, INTERVAL_LENGTH_IN_SECONDS)) # Timestamps of interval starts
-MINIMUM_DATAPOINTS_PER_INTERVAL = 1 #( INTERVAL_LENGTH_IN_SECONDS // (SAMPLE_FREQUENCY) ) // 2 # It will be accepted if it has at least half the datapoints
+INTERVAL_LENGTH_IN_SECONDS = (24 / NUMBER_OF_INTERVALS)*3600
 
 
 # HELPER FUNCTIONS
 
 
-
-# Beginning in Python 3.7 can use datetime.date.fromisoformat(YYYY-MM-DD)
-def convertDateToUnixTimestamp(date_string):
-    """
-    Converts a date formatted in YYYY-MM-DD to a Unix timestamp,
-    or the number of seconds passed since 1 Jan 1970 12:00 AM in the current timezone
-    THIS ASSUMES THE DATE GIVEN IS IN THE TIMEZONE THAT THE PROGRAM IS RUN IN
-    because of this, these timestamps are only relative, and should not be exported
-    """
-    assert len(date_string) == 10 # Format YYYY-MM-DD
-    return int(datetime.datetime.strptime(date_string, "%Y-%m-%d").timestamp())
-
 def getDatetime(row):
     """
     Returns datetime.datetime object generated from data in the row
     """
-    dateSeconds = convertDateToUnixTimestamp(row['Date_Time'])
+    date = (datetime.datetime.strptime(row['Date_Time'], "%Y-%m-%d")).date()
     # Assuming secondTimestamp is in seconds from midnight of the day before
-    return datetime.datetime.fromtimestamp(dateSeconds + int(row['Hour'])*3600 + int(row['Minute'])*60)
+    return datetime.datetime.combine( date, datetime.time(int(row['Hour']), int(row['Minute'])) )
 
 def isInSameInterval(datetime1, datetime2):
     """
@@ -97,17 +83,49 @@ def isInSameInterval(datetime1, datetime2):
     else:
         return isInWhatInterval(datetime1) == isInWhatInterval(datetime2)
 
-def isInWhatInterval(datetime):
+def isInWhatInterval(datetime1):
     """
     Returns the index of the interval in which the minuteTimestamp falls
     """
-    return ( (datetime.hour * 3600) + (datetime.minute * 60) + datetime.second ) // INTERVAL_LENGTH_IN_SECONDS
+    return int( ( (datetime1.hour * 3600) + (datetime1.minute * 60) + datetime1.second ) // INTERVAL_LENGTH_IN_SECONDS )
 
-def getIntervalStart(middleDatetime):
-    return datetime.datetime.fromtimestamp(convertDateToUnixTimestamp((middleDatetime.date()).isoformat()) + INTERVALS[isInWhatInterval(middleDatetime)])
+def getIntervalStart(datetime1):
+    t = getTime(INTERVAL_LENGTH_IN_SECONDS*isInWhatInterval(datetime1))
+    d = datetime1.date()
+    return datetime.datetime.combine(d,t)
+
+def getTime(seconds):
+    hour = int(seconds // 3600)
+    minute = int((seconds % 3600) // 60)
+    second = int((seconds % 60))
+    return datetime.time(hour,minute,second)
 
 def getPoint(row):
-    return Point( (float(row['X_UTM']), float(row['Y_UTM'])) )
+    return ( (float(row['X_UTM']), float(row['Y_UTM'])) )
+
+def getMaxDisplacement(listofPoints):
+    # There should be a more efficient way to do this
+    maxDistance = 0
+    for point1 in listofPoints:
+        for point2 in listofPoints:
+            length = LineString((point1,point2)).length
+            if length > maxDistance:
+                maxDistance = length
+    return maxDistance
+
+def areInAdjacentIntervals(datetime1,datetime2):
+    assert datetime1 < datetime2, 'datetime1 should come before datetime2'
+    interval1 = isInWhatInterval(datetime1)
+    interval2 = isInWhatInterval(datetime2)
+
+    adjacentWithinDay = datetime1.date() == datetime2.date() and \
+        abs( isInWhatInterval(datetime1) - isInWhatInterval(datetime2) ) <= 1
+
+    lastAndFirst = ( datetime1.date() + datetime.timedelta(days=1) ) == datetime2.date() and \
+        interval1 == NUMBER_OF_INTERVALS - 1 and \
+        interval2 == 0
+    
+    return adjacentWithinDay or lastAndFirst
 
 # MAIN SCRIPT
 
@@ -128,7 +146,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
     reader = csv.DictReader(inputCSVfile)
 
     # Start the output file
-    fieldnames = ['HorseID', 'Date', 'Interval', 'StartTime', 'EndTime', 'Distance', 'Area','Spay']
+    fieldnames = ['HorseID', 'Date', 'Interval', 'StartTime', 'EndTime', 'Distance', 'Area', 'MaxDisplacement','Spay']
     writer = csv.DictWriter(outputCSVfile, fieldnames=fieldnames)
     writer.writeheader()
 
@@ -161,44 +179,56 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
                     'EndTime': (previousDatetime.time()).isoformat(timespec='minutes'), \
                     'Distance': (LineString(intervalPoints)).length, \
                     'Area': ((MultiPoint(intervalPoints)).convex_hull).area, \
+                    'MaxDisplacement': getMaxDisplacement(intervalPoints), \
                     'Spay': SPAY})
+                # For debug only
+                #pyplot.scatter(*zip(*intervalPoints))
+                #pyplot.show()
+
+                # Reject a day if it does not have all intervals represented
+                if len(rowsToWrite) == NUMBER_OF_INTERVALS:
+                    for row in rowsToWrite:
+                        writer.writerow(row)
+                else:
+                    logfile.write('Insufficient number of intervals on ' + (previousDatetime.date()).isoformat() + '\n')
+                rowsToWrite.clear()
+
             else:
                 logfile.write('Insufficient number of datapoints on ' + (startDatetime.date()).isoformat() + ' Interval ' + str(isInWhatInterval(startDatetime)) + '\n')            
             break # Exit the loop
         
         currentDatetime = getDatetime(currentRow) # This won't execute when it gets to the end of the file
+        assert currentDatetime > previousDatetime, "Dates are not in sequential order at " + currentDatetime.isoformat()
         currentPoint = getPoint(currentRow)
-        assert currentRow['HorseID'] == previousRow['HorseID'] # Here I am forcing there to be only one horse per file
+        assert currentRow['HorseID'] == previousRow['HorseID'], "There is more than one horse in this file"
 
         if previousDatetime.date() == currentDatetime.date() and isInSameInterval(startDatetime, currentDatetime):
-            # assert currentDatetime.timestamp() > previousDatetime.timestamp()
             # Only use this datapoint if it is in the desired sampling frequency
             if (currentDatetime - previousDatetime).total_seconds() > (SAMPLE_FREQUENCY - SAMPLE_FREQUENCY_TOLERANCE):
                 intervalPoints.append(currentPoint)
-                logfile.write('Calculating distance for ' + previousRow['Date_Time'] + ': ' + previousRow['Hour'] + ' hours ' + previousRow['Minute'] + ' minutes' \
-                    + '\n\tand '+ currentRow['Date_Time'] + ': ' + currentRow['Hour'] + ' hours ' + currentRow['Minute'] + ' minutes\n')
+                logfile.write('Calculating distance from ' + previousDatetime.isoformat() + ' to ' + currentDatetime.isoformat() + '\n')
             else:
                 # Keep the same previous row (don't do the assignment at the end of the loop)
                 continue
         else:
             # We are done calculating distance for the last set
-
+            logfile.write('Found datapoint in new interval\n')
             # Throw out data for intervals that don't have enough datapoints
-            #if numberOfDatapoints >= MINIMUM_DATAPOINTS_PER_INTERVAL:
             # I will take the distance from the last point of interval one to the first point of interval two
             # and add that distance to interval one
             # Restrict the merging to be between two intervals
             intermediate_point = None
-            if (getIntervalStart(currentDatetime) - previousDatetime).total_seconds() <= INTERVAL_LENGTH_IN_SECONDS:
-                logfile.write('boundary: ' + str(getIntervalStart(currentDatetime).timestamp()) + '\n')
-                logfile.write('currentDatetime: ' + str(currentDatetime.timestamp()) + '\n')
-                logfile.write('previousDatetime: ' + str(previousDatetime.timestamp()) + '\n')
+            if areInAdjacentIntervals(previousDatetime, currentDatetime):
+                logfile.write('boundary: ' + str((getIntervalStart(currentDatetime)).isoformat()) + '\n')
+                logfile.write('currentDatetime: ' + str(currentDatetime.isoformat()) + '\n')
+                logfile.write('previousDatetime: ' + str(previousDatetime.isoformat()) + '\n')
         
                 proportion_to_midpoint = (getIntervalStart(currentDatetime) - previousDatetime) / (currentDatetime - previousDatetime)
+                assert 0 <= proportion_to_midpoint <= 1, "Intermediate point calculation error at " + previousDatetime.isoformat()
                 
-                x = previousPoint.x + proportion_to_midpoint*(currentPoint.x - previousPoint.x)
-                y = previousPoint.y + proportion_to_midpoint*(currentPoint.y - previousPoint.y)
-                intermediate_point = Point( (x,y) )
+                x = previousPoint[0] + proportion_to_midpoint*(currentPoint[0] - previousPoint[0])
+                y = previousPoint[1] + proportion_to_midpoint*(currentPoint[1] - previousPoint[1])
+                intermediate_point = (x,y)
                 intervalPoints.append(intermediate_point)
                 logfile.write('Adding ' + str(proportion_to_midpoint) +' to first interval\n')
             else:
@@ -212,11 +242,15 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
                     'EndTime': (currentDatetime.time()).isoformat(timespec='minutes'), \
                     'Distance': (LineString(intervalPoints)).length, \
                     'Area': ((MultiPoint(intervalPoints)).convex_hull).area, \
+                    'MaxDisplacement': getMaxDisplacement(intervalPoints), \
                     'Spay': SPAY})
+                # For debug only
+                #pyplot.scatter(*zip(*intervalPoints))
+                #pyplot.show()
 
                 logfile.write((previousDatetime.date()).isoformat() + ': ' + str((LineString(intervalPoints)).length) + ' meters\n') #debug
             else:
-                logfile.write('Insufficient number of datapoints on ' + (startDatetime.date()).isoformat() + ' Interval ' + str(isInWhatInterval(startDatetime)) + '\n')            
+                logfile.write('Insufficient datapoints on ' + (startDatetime.date()).isoformat() + ' Interval ' + str(isInWhatInterval(startDatetime)) + ' - rejecting interval\n')            
             # Only write datapoints for the day if all intervals are present
             if previousDatetime.date() != currentDatetime.date():
                 # Reject a day if it does not have all intervals represented
@@ -224,7 +258,7 @@ with open(inputfilepath, 'r', newline='') as inputCSVfile, \
                     for row in rowsToWrite:
                         writer.writerow(row)
                 else:
-                    logfile.write('Insufficient number of intervals on ' + (previousDatetime.date()).isoformat() + '\n')
+                    logfile.write('Insufficient intervals on ' + (previousDatetime.date()).isoformat() + ' - rejecting day\n')
                 rowsToWrite.clear()
             
             # Now we will start a new interval
