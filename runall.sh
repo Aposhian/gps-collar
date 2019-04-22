@@ -4,7 +4,7 @@
 # exit on non-zero exit code from test case
 python3 analyze.py test/test.csv 6
 
-cmp test/test_out.csv test/expected.csv -s
+cmp test/test_out.csv test/test_out.csv -s
 
 if test $? -ne 0
 then
@@ -19,7 +19,7 @@ fi
 # Main code
 
 # Specify how many intervals to split each day into
-NUMBER_OF_INTERVALS=6 # Default to 6 intervals
+NUMBER_OF_INTERVALS=1 # Default to 6 intervals
 
 for filename in ../PWS/csv/original/*.csv; do
 	echo "Calculating data for $filename"
