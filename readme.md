@@ -16,3 +16,7 @@ Let the datapoints be described as vectors with xy-coordinates and time value t 
 Let `[t1,t2]`,`[t2,t3]` be time intervals and let there be datapoints `a = <xa,ya,ta>` and `b = <xb,yb,tb>` where `t1 < ta < tb` and `t2 < tb < t3`.
 The interpolated datapoint `m = <xm,ym,t2>` between `a` and `b` will be given by the following formula: `m = [(t2 - ta) / (tb - ta)] * <xb - xa, yb - ya> + <xa,ya>`
 This can be thought of as calculating the proportion of the difference between the first point and the boundary time to the total time difference between the two points. Then this scalar is multiplied by the `<x,y>` vector that is the difference between the two points, and added to the first `<x,y>` vector.
+
+Calculations of distance, area, and breadth for each of the intervals is done with the Python shapely library.
+
+Area for an interval is considered to be the area of the convex polygon that encompasses all points in that set. The breadth is the greatest distance between any two points. Distance is simply the sum of the distances between all points in the interval.
